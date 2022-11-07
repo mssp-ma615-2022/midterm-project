@@ -1,0 +1,297 @@
+---
+title: "ag_data"
+output: html_document
+date: "2022-11-07"
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(magrittr)
+library(readxl)
+```
+
+## Start by reading the data
+
+```{r}
+strawb <- read_xlsx("strawberries-2022oct30-a.xlsx", col_names = TRUE)
+```
+
+## Get the column names and index them
+
+```{r}
+cnames <- colnames(strawb) 
+x <- 1:dim(strawb)[2]
+```
+
+## drop the columns with only one unique value
+
+```{r}
+## Set T as an indicator
+T <- NULL
+
+## Collect number of unique rows in each column
+for(i in x){T <- c(T, dim(unique(strawb[i]))[1])}
+
+## Use T to select columns to drop --
+drop_cols <- cnames[which(T == 1)]
+
+## Now, drop the columns with only one unique value.
+strawb %<>% select(!all_of(drop_cols))
+```
+
+
+## Let's arrange the data frame and separate data item.
+
+```{r}
+strawb %<>% arrange(Year, State)
+
+## now look at the `Data Item` column
+temp1 <- strawb %>% select(`Data Item`) %>% distinct()
+
+## separate by dash at first and then separate by comma
+strawb2 <- strawb %>% separate(col=`Data Item`, 
+                               into = c("temp1","temp2"), 
+                               sep = "-", fill = "right") %>% 
+  separate(col=`temp2`, 
+           into = c("sales", "units", "avg"), 
+           sep = ",", 
+           fill = "right")
+
+## create column for organic strawberry
+strawb2 %<>% mutate(organic=ifelse(str_detect(strawb2$temp1,"ORGANIC"),1,0),
+                    .after=temp1)
+```
+
+## clean column for strawb2
+
+```{r}
+strawb2 %<>% mutate(avg = ifelse(is.na(avg),0,1))
+strawb2$temp1 <- gsub("STRAWBERRIES, ORGANIC","", as.character(strawb2$temp1))
+strawb2$temp1 <- gsub("STRAWBERRIES","", as.character(strawb2$temp1))
+strawb2$temp1 <- gsub(",","", as.character(strawb2$temp1))
+colnames(strawb2)[6] <- "condition"
+
+strawb_raw <- strawb 
+strawb <- strawb2
+```
+
+
+## clean env
+
+```{r}
+rm(strawb2, temp1)
+```
+
+## get organic and non organic strawberries
+
+```{r}
+org_row <- which(strawb$organic==1) 
+strawb_organic <- strawb %>%
+  slice(org_row, preserve = FALSE) 
+strawb_non_organic <- strawb %>%
+  filter(!row_number() %in% org_row)
+```
+
+## grep chemical rows
+
+```{r}
+chem_rows <- grep("APPLICATIONS", strawb_non_organic$sales, ignore.case = T)
+
+chem_rows_1 <- grep("chemical", strawb_non_organic$Domain, ignore.case = T)
+
+ins <- intersect(chem_rows, chem_rows_1)
+
+chem_rows_2 <- grep("chemical", strawb_non_organic$`Domain Category`, ignore.case = T)
+
+ins_2 <- intersect(chem_rows, chem_rows_2)
+```
+
+## make strawberries applied with chemicals
+
+```{r}
+strawb_chem <- strawb_non_organic %>% slice(chem_rows, preserve = FALSE)
+```
+
+## first drop the "no-info" columns Since we will need to do this
+## for all three tibbles, write a functin
+
+```{r}
+before_cols = colnames(strawb_chem) 
+T = NULL 
+x = length(before_cols)
+
+for(i in 1:x){ 
+  b <- length(unlist(strawb_chem[,i] %>% unique()) ) 
+  T <- c(T,b) }
+
+drop_cols <- before_cols[which(T == 1)] 
+strawb_chem %<>%
+  select(!all_of(drop_cols)) 
+
+after_cols = colnames(strawb_chem)
+```
+
+## separate Domain Category at :
+
+```{r}
+strawb_chem %<>% separate(col=`Domain Category`, 
+                          into = c("dc1", "chem_name"), 
+                          sep = ":", fill = "right")
+
+temp1 <- strawb_chem %>% select(chem_name) %>% unique()
+length(unlist(temp1))
+
+sum(strawb_chem$Domain == strawb_chem$dc1) == dim(strawb_chem)[1]
+```
+
+## clean up columns
+
+```{r}
+strawb_chem %<>% select(Year, State, units, avg, dc1, chem_name, Value)
+```
+
+## remove "MEASURED IN"
+
+```{r}
+strawb_chem$units <- str_remove_all(strawb_chem$units, "MEASURED IN ")
+```
+
+## Separate fertilizers from strawb_chem table
+
+```{r}
+bb <- grep("CHEMICAL,", strawb_chem$dc1, ignore.case = T) 
+length(bb)
+chem <- 1:2112 
+non_chem_rows <- setdiff(chem, bb)
+length(non_chem_rows)
+
+temp1 <- strawb_chem %>% slice(non_chem_rows) 
+fertilizers <- temp1
+
+rm(temp1, bb)
+```
+
+## now remove "CHEMICAL," from the entries in the dc1
+## and rename the column chem_types
+
+```{r}
+strawb_chem$dc1 <- str_remove_all(strawb_chem$dc1, "CHEMICAL,")
+
+strawb_chem$dc1 %>% unique()
+
+strawb_chem %<>% rename(chem_types = dc1)
+```
+
+
+
+## remove the parens
+
+```{r}
+strawb_chem$chem_name <- str_remove_all(strawb_chem$chem_name, "\\(")
+
+strawb_chem$chem_name <- str_remove_all(strawb_chem$chem_name, "\\)")
+```
+
+## separate chem_name and chem_code
+
+```{r}
+strawb_chem %<>% separate(col = chem_name, 
+                          into = c("chem_name","chem_code"), 
+                          sep = "=", fill = "right" )
+```
+
+## check for NAs and there is only missing chemical code
+
+```{r}
+unique(is.na(strawb_chem))
+```
+
+## get specific chemical tables
+## BIFENTHRIN table
+
+```{r}
+bb <- grep("BIFENTHRIN", strawb_chem$chem_name, ignore.case = T)
+
+bifen <- strawb_chem %>% slice(bb)
+```
+
+## methyl bromide table
+
+```{r}
+cc <- grep("methyl bromide", strawb_chem$chem_name, ignore.case = T)
+
+methyl <- strawb_chem %>% slice(cc)
+```
+
+## chloropicrin table
+
+```{r}
+ch <- grep("chloropicrin", strawb_chem$chem_name, ignore.case = T)
+
+chloropicrin <- strawb_chem %>% slice(ch)
+
+rm(bb,cc,ch)
+```
+
+## filter the chloropicrin level in CA through years
+
+```{r}
+ca_chlor <- chloropicrin %>% filter(State=="CALIFORNIA", units==" LB")
+ca_chlor$Value <- as.integer(ca_chlor$Value)
+ca_chlor$Year <- as.integer(ca_chlor$Year) 
+ca_chlor %<>% select(Year, Value) 
+ca_chlor %>% ggplot(aes(Year, Value)) + 
+  geom_bar(stat="identity")
+```
+
+
+
+## Gradescope problem
+## 1 {#section}
+## get rows that cwt==285
+
+```{r}
+ans_1 <- which(strawb$Value==285) 
+cat("By examining around 615 rows, we found $87015 for the corresponding value.")
+```
+
+## 2 {#section-1}
+## examine target rows
+
+```{r}
+strawb %>% filter(State=="CALIFORNIA" & Year==2016 & Domain=="ORGANIC STATUS") 
+range <- 231304956*1.96*0.137 
+lower <- 231304956-62110007
+upper <- 231304956+62110007 
+cat("The CI is (169194949, 293414963)")
+```
+
+## 3
+
+```{r}
+cat("The CI is (111691147, 192065033)")
+
+```
+
+## 4
+
+```{r}
+strawb_chem %>% group_by(State) %>% summarize(count_distinct = n_distinct(chem_name)) 
+ans_4 <- length(unique(strawb_chem$chem_name))
+cat("172 for total, 139 for California, 116 for Florida")
+```
+
+## 5
+## find chem count by states
+
+```{r}
+strawb_chem %>% group_by(State) %>% summarize(count_distinct = n_distinct(chem_name))
+ans_5 <- 139-116 
+cat("CA has chemical number of", ans_5)
+```
+
+

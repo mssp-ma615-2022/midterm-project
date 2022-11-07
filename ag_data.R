@@ -196,6 +196,15 @@ chloropicrin <- strawb_chem %>% slice(ch)
 
 rm(bb,cc,ch)
 
+## filter the chloropicrin level in CA through years
+
+ca_chlor <- chloropicrin %>% filter(State=="CALIFORNIA", 
+                        units==" LB")
+ca_chlor$Value <- as.integer(ca_chlor$Value)
+ca_chlor$Year <- as.integer(ca_chlor$Year)
+ca_chlor %<>% select(Year, Value)
+ca_chlor %>% ggplot(aes(Year, Value)) +
+  geom_bar(stat="identity")
 
 
 ## Gradescope problem
