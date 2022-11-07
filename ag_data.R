@@ -37,7 +37,7 @@ temp1 <- strawb %>% select(`Data Item`) %>%
          distinct()
 
 
-## separate by dash at first
+## separate by dash at first and then separate by comma
 strawb2 <- strawb %>% separate(col=`Data Item`,
                                into = c("temp1", "temp2"),
                                sep = "-",
@@ -138,7 +138,6 @@ length(non_chem_rows)
 
 temp1 <- strawb_chem %>% slice(non_chem_rows)
 fertilizers <- temp1
-strawb_chem <- strawb_chem[bb,]
 
 rm(temp1, bb)
 
@@ -215,8 +214,7 @@ cat("The CI is (169194949, 293414963)")
 
 ## 3
 cat("The CI is (111691147, 192065033)")
-## 111691147, 192065033
- 
+
 ## 4
 strawb_chem %>% group_by(State) %>% 
   summarize(count_distinct = n_distinct(chem_name))
