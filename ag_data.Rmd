@@ -188,12 +188,22 @@ strawb_chem %<>% rename(chem_types = dc1)
 
 
 
-## remove the parens
+## remove the parens and clean strawb_chem table
 
 ```{r}
 strawb_chem$chem_name <- str_remove_all(strawb_chem$chem_name, "\\(")
 
 strawb_chem$chem_name <- str_remove_all(strawb_chem$chem_name, "\\)")
+
+strawb_chem$units <- str_remove_all(strawb_chem$units, " ")
+
+strawb_chem$chem_types <- str_remove_all(strawb_chem$chem_types, " ")
+
+strawb_chem$chem_name <- str_remove_all(strawb_chem$chem_name, " ")
+
+strawb_chem$Year <- as.numeric(strawb_chem$Year)
+
+strawb_chem$Value <- as.numeric(strawb_chem$Value)
 ```
 
 ## separate chem_name and chem_code
@@ -240,13 +250,100 @@ rm(bb,cc,ch)
 ## filter the chloropicrin level in CA through years
 
 ```{r}
-ca_chlor <- chloropicrin %>% filter(State=="CALIFORNIA", units==" LB")
+ca_chlor <- chloropicrin %>% filter(State=="CALIFORNIA", units=="LB")
 ca_chlor$Value <- as.integer(ca_chlor$Value)
 ca_chlor$Year <- as.integer(ca_chlor$Year) 
 ca_chlor %<>% select(Year, Value) 
 ca_chlor %>% ggplot(aes(Year, Value)) + 
-  geom_bar(stat="identity")
+  geom_bar(stat="identity") + 
+  labs(y="Chloropicrin in LB") +
+  ggtitle("The Chloropicrin level in CA")
 ```
+
+```{r}
+## get types of chemicals used in strawberry in CA through years
+
+ca_chem <- strawb_chem %>% filter(State=="CALIFORNIA", 
+                       units=="LB") %>%
+  drop_na(Value)
+
+ca_total_chem <- ca_chem  %>% filter(chem_name=="TOTAL")
+
+## graph proportion of different chemicals in CA
+
+ca_total_chem %>% ggplot(aes(x=Year, y=Value,fill=chem_types)) + 
+  geom_bar(stat = "identity") + 
+  labs(y="Chemicals in LB") +
+  ggtitle("Chemicals by type of strawberry in CA through years") +
+  scale_fill_discrete(name = "Types of chemical") +
+  scale_fill_manual(values=c("#9933FF",
+                             "#33FFFF",
+                             "red",
+                             "darkblue"))
+
+```
+
+```{r}
+## get types of chemicals used in strawberry in FL through years
+
+fl_chem <- strawb_chem %>% filter(State=="FLORIDA", 
+                       units=="LB") %>%
+  drop_na(Value)
+
+fl_total_chem <- fl_chem  %>% filter(chem_name=="TOTAL")
+
+## graph proportion of different chemicals in FL
+
+fl_total_chem %>% ggplot(aes(x=Year, y=Value,fill=chem_types)) + 
+  geom_bar(stat = "identity") + 
+  labs(y="Chemicals in LB") +
+  ggtitle("Chemicals by type of strawberry in FL through years") +
+  scale_fill_discrete(name = "Types of chemical") +
+  scale_fill_manual(values=c("#9933FF",
+                             "#33FFFF",
+                             "red",
+                             "darkblue"))
+```
+
+```{r}
+## get total weights of strawberry used chemicals in CA and FL
+
+ca_total_chem_sum <- ca_total_chem %>% group_by(Year) %>% summarise(sum=sum(Value)) %>% mutate(type="chemical")
+fl_total_chem_sum <- fl_total_chem %>% group_by(Year) %>% summarise(sum=sum(Value)) %>% mutate(type="chemical")
+
+ca_total_chem_sum$rn <- NULL
+
+## add up two regions weights of strawberry used chemicals
+total_chem_sum <- rbind(ca_total_chem_sum,fl_total_chem_sum) %>% group_by(Year, type) %>% summarise_all(sum)
+
+
+## get total organic stawberry weights in CA and FL
+
+total_organ <- strawb %>% filter(units==" MEASURED IN CWT",
+                  condition==" ",
+                  State %in% c("CALIFORNIA", "FLORIDA")) %>%
+  select(Year, State, Value) 
+
+total_organ$Value <- as.numeric(total_organ$Value)
+
+total_organ_sum <- total_organ %>%
+  mutate(Value=Value*100) %>% group_by(Year) %>%
+  summarise(sum=sum(Value)) %>% mutate(type="organic") %>% select(1,3,2)
+
+## add up two regions weights of organic strawberry
+
+total_sum <- rbind(total_organ_sum, total_chem_sum)
+
+## graph to show the proportion of strawberries applied with chemicals compared with organic ones
+
+total_sum %>% ggplot(aes(x=Year, y=sum,fill=type)) + 
+  geom_bar(stat = "identity") + 
+  labs(y="Strawberry sale weights in LB") +
+  ggtitle("Sales of strawberries in different breeding ways through years")
+
+
+```
+
 
 
 
